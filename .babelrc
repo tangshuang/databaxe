@@ -1,0 +1,9 @@
+{
+  "presets": [
+    ["env", { "exclude": ["transform-async-to-generator", "transform-regenerator"] }]
+  ],
+  "plugins": [
+    "transform-class-properties", 
+    "async-to-promises"
+  ]
+}

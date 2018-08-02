@@ -1,0 +1,44 @@
+{
+  "name": "databaxe",
+  "version": "1.0.0",
+  "description": "A data management tool for frontend.",
+  "main": "dist/databaxe.js",
+  "scripts": {
+    "build": "node build.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tangshuang/dataker.git"
+  },
+  "keywords": [
+    "data"
+  ],
+  "author": "tangshuang",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/tangshuang/dataker/issues"
+  },
+  "homepage": "https://github.com/tangshuang/dataker#readme",
+  "dependencies": {
+    "hello-async": "^1.0.0",
+    "hello-indexeddb": "^1.2.0",
+    "hello-worker": "^1.1.1",
+    "interpolate": "^0.1.0",
+    "lodash.merge": "^4.6.1",
+    "object-hashcode": "^1.1.0"
+  },
+  "devDependencies": {
+    "babel-core": "^6.26.3",
+    "babel-loader": "^7.1.5",
+    "babel-plugin-async-to-promises": "^1.0.5",
+    "babel-plugin-transform-class-properties": "^6.24.1",
+    "babel-preset-env": "^1.7.0",
+    "gulp": "^3.9.1",
+    "gulp-babel": "^7.0.1",
+    "gulp-bufferify": "^1.0.0",
+    "webpack": "^4.16.4",
+    "webpack-bufferify": "^1.0.1",
+    "webpack-cli": "^3.1.0",
+    "webpack-stream": "^5.1.0"
+  }
+}
