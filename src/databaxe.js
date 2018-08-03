@@ -21,7 +21,7 @@ export default class DataBaxe {
 
   constructor(options) {
     this.dataSources = {}
-    this.id = getStringHashcode((options.id || 'databaxe.' + Date.now()) + '.' + parseInt(Math.random() * 10000))
+    this.id = (options.id || 'databaxe.' + Date.now())  + '.' + parseInt(Math.random() * 10000)
     this.settings = Object.assign({}, DataTaker.defaultOptions, options)
     this.settings.middlewares = (options.middlewares||[]).concat(DataTaker.defaultOptions.middlewares)
     this._deps = []
@@ -95,6 +95,16 @@ export default class DataBaxe {
       throw new Error('data source ' + id + ' is not exists.')
     }
 
+    let { url, type } = dataSource
+    let requestURL = interpolate(url, params)
+    let req = Object.assign({}, options)
+    req.url = requestURL
+    req.method = (req.method || type || 'get').toUpperCase()
+    req.body = JSON.stringify(Object.assign({}, dataSource.postData, req.postData))
+
+    let requestId = getObjectHashcode(req)
+    await this._putToStore(requestId, data)
+
     let $source = $dataSources[dataSource.hash]
     let callbacks = $source.callbacks.filter(item => item.context === this.id)
 
@@ -111,6 +121,7 @@ export default class DataBaxe {
     })
 
     await asyncEach(callbacks, async (item) => {
+      let data = await this._getData(requestId)
       await asyncFn(item.callback)(data, params, options)
     })
   }
@@ -156,6 +167,7 @@ export default class DataBaxe {
     let { url, type, transformers, middlewares, expires } = dataSource
     let requestURL = interpolate(url, params)
     let req = Object.assign({}, options)
+    req.url = requestURL
     req.method = (req.method || type || 'get').toUpperCase()
     req.body = JSON.stringify(Object.assign({}, dataSource.postData, req.postData))
 
@@ -176,12 +188,11 @@ export default class DataBaxe {
       try {
         await asyncSerial(middlewares, req, null)
         let res = await fetch(requestURL, req)
-        let body = res.json()
-        await asyncSerial(middlewares, req, body)
+        await asyncSerial(middlewares, req, res)
+        let data = res.data ? await res.data() : await res.json()
         
         $requestQueue[requestId] = null
   
-        await this._putToStore(requestId, data)
         await this.dispatch(id, params, options, data)
         return await transfer(data)
       }
