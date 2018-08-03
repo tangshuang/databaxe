@@ -312,7 +312,7 @@ export default class DataBaxe {
     return await $transaction.processing
   }
 
-  autorun(funcs) {
+  async autorun(funcs) {
     if (!Array.isArray(funcs) && typeof funcs === 'function') {
       funcs = [ funcs ]
     }
@@ -320,7 +320,7 @@ export default class DataBaxe {
       this._wrapDep(fun)
     })
   }
-  autofree(funcs) {
+  async autofree(funcs) {
     if (!Array.isArray(funcs) && typeof funcs === 'function') {
       funcs = [ funcs ]
     }
