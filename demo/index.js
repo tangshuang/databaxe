@@ -1,7 +1,3 @@
-import ComponentA from './componentA'
-import ComponentB from './componentB'
-import * as DataSources from './datasources'
-
 let $el = document.querySelector('#app')
 $el.innerHTML = `
   <h1>Demo 1: request only once when using same datasource</h1>

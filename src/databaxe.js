@@ -1,29 +1,31 @@
-import merge from 'lodash.merge'
 import interpolate from 'interpolate'
-import { getObjectHashcode, getStringHashcode } from 'object-hashcode'
+import { getObjectHashcode } from 'object-hashcode'
 import HelloWorker from 'hello-worker'
-import { isEqual } from './utils'
-import { asyncSerial, asyncEach, asyncIterate, asyncFn } from 'hello-async'
-import { $dataSotre, $snapshotsSotre } from './db'
+import { isEqual, merge } from './utils'
+import { asyncEach, asyncI, $async } from 'hello-async'
+import { $dataDB, $snapshotsDB } from './db'
+import axios from 'axios'
 
 const $dataSources = {}
 const $requestQueue = {}
 const $transactions = {}
 
 export default class DataBaxe {
-  static defaultOptions = {
-    host: '',
+  static defaultSettings = {
     debug: false,
     sanpshotsMaxCount: 0,
     expires: 0,
-    middlewares: [],
+  }
+  static defaultOptions = {
+    baseURL: '',
+    method: 'get',
   }
 
-  constructor(options) {
+  constructor(settings, options) {
     this.dataSources = {}
-    this.id = (options.id || 'databaxe.' + Date.now())  + '.' + parseInt(Math.random() * 10000)
-    this.settings = Object.assign({}, DataTaker.defaultOptions, options)
-    this.settings.middlewares = (options.middlewares||[]).concat(DataTaker.defaultOptions.middlewares)
+    this.id = (settings.id || 'databaxe.' + Date.now())  + '.' + parseInt(Math.random() * 10000)
+    this.settings = Object.assign({}, DataBaxe.defaultSettings, settings)
+    this.options = Object.assign({}, DataBaxe.defaultOptions, options)
     this._deps = []
   }
   async register(dataSources) {
@@ -33,25 +35,45 @@ export default class DataBaxe {
     }
 
     dataSources.forEach((dataSource) => {
-      let { url, type, postData, id, transformers, middlewares, expires } = dataSource
+      let { id, url, options, transformers, expires } = dataSource
+      let { method, headers, baseURL, params, data, auth } = (options||{})
       let { host } = this.settings
-      let requestURL = url.indexOf('http://') === 0 || url.indexOf('https://') === 0 ? url : host + url
-      let hash = getObjectHashcode({ type, url: requestURL, postData })
-      let $source = {
-        hash,
-        url: requestURL,
-        type,
-        postData,
+
+      let _options = {}
+      let _url = url.indexOf('http://') === 0 || url.indexOf('https://') === 0 ? url : baseURL ? baseURL + url : host ? host + url : url
+      if (method) {
+        _options.method = method
+      }
+      if (headers) {
+        _options.headers = headers
+      }
+      if (params) {
+        _options.params = params
+      }
+      if (data) {
+        _options.data = data
+      }
+      if (auth) {
+        _options.auth = auth
       }
 
+      let source = {
+        url: _url,
+        options: _options,
+      }
+
+      let hash = getObjectHashcode(source)
+
       if (!$dataSources[hash]) {
-        $dataSources[hash] = Object.assign({}, $source, { callbacks: [] })
+        $dataSources[hash] = Object.assign({}, source, { callbacks: [], sanpshotsMaxCount: this.settings.sanpshotsMaxCount })
+      }
+      else {
+        $dataSources[hash].sanpshotsMaxCount = Math.max(this.settings.sanpshotsMaxCount, $dataSources[hash].sanpshotsMaxCount)
       }
 
       transformers = (transformers||[]).map(transformer => new HelloWorker(transformer))
       expires = expires || this.settings.expires
-      middlewares = (middlewares||[]).concat(this.settings.middlewares)
-      this.dataSources[id] = Object.assign({}, $source, { transformers, middlewares, expires })
+      this.dataSources[id] = Object.assign({}, source, { hash, transformers, expires })
     })
   }
   async subscribe(id, callback, priority = 10) {
@@ -95,19 +117,17 @@ export default class DataBaxe {
       throw new Error('data source ' + id + ' is not exists.')
     }
 
-    let { url, type } = dataSource
-    let requestURL = interpolate(url, params)
-    let req = Object.assign({}, options)
-    req.url = requestURL
-    req.method = (req.method || type || 'get').toUpperCase()
-    req.body = JSON.stringify(Object.assign({}, dataSource.postData, req.postData))
+    let _url = interpolate(dataSource.url, params)
+    let _options = Object.assign({}, dataSource.options, options)
 
-    let requestId = getObjectHashcode(req)
-    await this._putToStore(requestId, data)
-
+    let requestId = getObjectHashcode({ 
+      url: _url,
+      options: _options,
+    })
+    
     let $source = $dataSources[dataSource.hash]
-    let callbacks = $source.callbacks.filter(item => item.context === this.id)
-
+    let callbacks = $source.callbacks
+    
     callbacks.sort((a, b) => {
       if (a.priority > b.priority) {
         return -1
@@ -120,9 +140,11 @@ export default class DataBaxe {
       }
     })
 
+    await this._putData(requestId, $source, data)
     await asyncEach(callbacks, async (item) => {
       let data = await this._getData(requestId)
-      await asyncFn(item.callback)(data, params, options)
+      let callback = $async(item.callback)
+      return await callback(data, params, options)
     })
   }
   _wrapDep(fun) {
@@ -164,71 +186,66 @@ export default class DataBaxe {
       this._addDep()
     }
 
-    let { url, type, transformers, middlewares, expires } = dataSource
-    let requestURL = interpolate(url, params)
-    let req = Object.assign({}, options)
-    req.url = requestURL
-    req.method = (req.method || type || 'get').toUpperCase()
-    req.body = JSON.stringify(Object.assign({}, dataSource.postData, req.postData))
+    let _url = interpolate(dataSource.url, params)
+    let _options = merge({}, dataSource.options, options)
 
-    let requestId = getObjectHashcode(req)
-
-    if ($requestQueue[requestId]) {
-      return await $requestQueue[requestId]
-    }
+    let requestId = getObjectHashcode({ 
+      url: _url,
+      options: _options,
+    })
 
     const transfer = async (data) => {
       let result = data
-      await asyncIterate(transformers, async (transformer) => {
+      await asyncI(dataSource.transformers, async (transformer, i, next) => {
         result = await transformer.invoke(result)
+        next()
       })
       return result
     }
-    const request = async () => {
-      try {
-        await asyncSerial(middlewares, req, null)
-        let res = await fetch(requestURL, req)
-        await asyncSerial(middlewares, req, res)
-        let data = res.data ? await res.data() : await res.json()
-        
-        $requestQueue[requestId] = null
-  
-        await this.dispatch(id, params, options, data)
-        return await transfer(data)
+    const request = () => {
+      if ($requestQueue[requestId]) {
+        return $requestQueue[requestId]
       }
-      catch(e) {
+      $requestQueue[requestId] = axios(_url, _options).then((res) => {
+        $requestQueue[requestId] = null
+        return res.data
+      }).then((data) => {
+        return this.dispatch(id, params, options, data).then(() => data)
+      }).then((data) => {
+        return transfer(data)
+      }).catch((e) => {
         $requestQueue[requestId] = null
         throw e
-      }
-    }
-    const graph = async () => {
-      $requestQueue[requestId] = request()
-      return await $requestQueue[requestId]
+      })
+      return $requestQueue[requestId]
     }
 
     if (force) {
-      return await graph()
+      let result = await request()
+      return result
     }
     
     let item = await this._getData(requestId)
     if (!item) {
-      return await graph()
+      let result = await request()
+      return result
     }
 
     // if expires is not set, it means user want to use current cached data any way
     // when data cache is not expired, use it
-    if (expires && item.time + expires < Date.now()) {
-      return await graph()
+    if (dataSource.expires && item.time + dataSource.expires < Date.now()) {
+      let result = await request()
+      return result
     }
     
     let output = await transfer(item.data)
     return output
   }
   async _getData(requestId) {
-    return await $dataSotre.get(requestId)
+    return await $dataDB.get(requestId)
   }
-  async _putData(requestId, data) {
-    let { sanpshotsMaxCount } = this.settings
+  async _putData(requestId, $source, data) {
+    let { sanpshotsMaxCount } = $source
 
     let time = Date.now()
     let item = {
@@ -237,19 +254,19 @@ export default class DataBaxe {
       data,
     }
 
-    let existsData = await $dataSotre.get(id)
+    let existsData = await $dataDB.get(requestId)
     if (existsData) {
-      await $snapshotsSotre.put(existsData)
+      await $snapshotsDB.put(existsData)
       if (sanpshotsMaxCount) {
-        let snapshots = await $snapshotsSotre.query('requestId', requestId)
+        let snapshots = await $snapshotsDB.query('requestId', requestId)
         if (snapshots.length > sanpshotsMaxCount) {
           let lastSnapshot = snapshots[snapshots.length - 1]
-          await $snapshotsSotre.delete(lastSnapshot.id)
+          await $snapshotsDB.delete(lastSnapshot.id)
         }
       }
     }
 
-    await $dataSotre.put(item)
+    await $dataDB.put(item)
   }
   async save(id, params = {}, data, options = {}) {
     let dataSource = this.dataSources[id]
@@ -257,12 +274,20 @@ export default class DataBaxe {
       throw new Error('dataSource ' + id + ' is not exists.')
     }
 
-    let { url, middlewares } = dataSource
-    let type = (options.method || dataSource.type || 'post').toUpperCase()
-    let requestURL = interpolate(url, params)
-    let hash = getObjectHashcode({ type, url: requestURL })
+    let _url = interpolate(dataSource.url, params)
+    let _method = { method: options.method || 'post' }
+    let _options = merge({}, dataSource.options, _method, options)
+    let _data = _options.data || {}
+    if (_options.data) {
+      delete _options.data
+    }
 
-    let $transaction = $transactions[hash]
+    let requestId = getObjectHashcode({ 
+      url: _url,
+      options: _options,
+    })
+
+    let tx = $transactions[requestId]
     let reset = () => {
       return {
         resolves: [],
@@ -272,49 +297,41 @@ export default class DataBaxe {
         processing: null,
       }
     }
-    if (!$transaction) {
-      $transaction = $transactions[hash] = reset()
+    if (!tx) {
+      tx = $transactions[requestId] = reset()
     }
 
-    let { resolves, promises, timer, processing } = $transaction
-    $transaction.data = merge({}, $transaction.data, data)
+    let { resolves, promises, timer, processing } = tx
+    tx.data = merge({}, tx.data, data)
     promises.push(new Promise(resolve => resolves.push(resolve)))
 
     if (timer) {
       clearTimeout(timer)
     }
-    $transaction.timer = setTimeout(() => {
+    tx.timer = setTimeout(() => {
       resolves.forEach(resolve => resolve())
-      $transactions[hash] = reset()
+      $transactions[requestId] = reset()
     }, 10)
 
     if (processing) {
       return processing
     }
 
-    const request = async () => {
-      await Promise.all(promises)
-
-      let req = Object.assign({}, options)
-      req.method = type
-      req.body = JSON.stringify($transaction.data)
-
-      $transactions[hash] = reset()
-
-      await asyncSerial(middlewares, req, null)
-      let res = await fetch(requestURL, req)
-      await asyncSerial(middlewares, req, res)
-
-      return res
+    const request = () => {
+      return Promise.all(promises).then(() => {
+        $transactions[requestId] = reset()
+        let data = merge({}, _data, tx.data)
+        return axios(_url, Object.assign({}, _options, { data }))
+      })
     }
 
-    $transaction.processing = request()
-    return await $transaction.processing
+    tx.processing = request()
+    return await tx.processing
   }
 
   async autorun(funcs) {
     if (!Array.isArray(funcs) && typeof funcs === 'function') {
-      funcs = [ funcs ]
+      funcs = [funcs]
     }
     funcs.forEach((fun) => {
       this._wrapDep(fun)
@@ -322,7 +339,7 @@ export default class DataBaxe {
   }
   async autofree(funcs) {
     if (!Array.isArray(funcs) && typeof funcs === 'function') {
-      funcs = [ funcs ]
+      funcs = [funcs]
     }
     funcs.forEach(fun => {
       let deps = this._deps.filter(item => item.target === fun)

@@ -1,6 +1,4 @@
-import DataBaxe from '../src/databaxe'
-
-export default class ComponentA {
+class ComponentB {
   constructor(container, DataSources) {
     this.container = container
     this.data = new DataBaxe({ id: 'B', debug: true, expires: 1000, snapshots: 10 })
@@ -26,7 +24,7 @@ export default class ComponentA {
     document.querySelector(this.container).innerHTML = html
   }
   save() {
-    this.data.save('studentsB', {}, { testdata1: 'this is 1' }, { method: 'post' })
-    this.data.save('studentsB', {}, { testdata2: 'another msg' }, { method: 'post' })
+    this.data.save('studentsB', {}, { testdata1: 'this is 1' })
+    this.data.save('studentsB', {}, { testdata2: 'another msg' })
   }
 }

@@ -4,6 +4,6 @@
   ],
   "plugins": [
     "transform-class-properties", 
-    "async-to-promises"
+    "transform-async-await"
   ]
 }

@@ -1,6 +1,4 @@
-import DataBaxe from '../src/databaxe'
-
-export default class ComponentA {
+class ComponentA {
   constructor(container, DataSources) {
     this.container = container
     this.data = new DataBaxe({ id: 'A', snapshots: 10 })

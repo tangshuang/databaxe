@@ -1,4 +1,5 @@
-export const STUDENTS = {
-  url: '/students',
-  type: 'GET',
+const DataSources = {
+  STUDENTS: {
+    url: '/students',
+  }
 }

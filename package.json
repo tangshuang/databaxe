@@ -4,7 +4,9 @@
   "description": "A data management tool for frontend.",
   "main": "dist/databaxe.js",
   "scripts": {
-    "build": "node build.js"
+    "build": "node build.js",
+    "watch": "webpack --watch=true",
+    "start": "node demo/server.js"
   },
   "repository": {
     "type": "git",
@@ -20,8 +22,9 @@
   },
   "homepage": "https://github.com/tangshuang/dataker#readme",
   "dependencies": {
-    "hello-async": "^1.0.0",
-    "hello-indexeddb": "^1.2.0",
+    "axios": "^0.18.0",
+    "hello-async": "^3.0.0",
+    "hello-indexeddb": "^1.2.3",
     "hello-worker": "^1.1.1",
     "interpolate": "^0.1.0",
     "lodash.merge": "^4.6.1",
@@ -30,9 +33,11 @@
   "devDependencies": {
     "babel-core": "^6.26.3",
     "babel-loader": "^7.1.5",
-    "babel-plugin-async-to-promises": "^1.0.5",
+    "babel-plugin-transform-async-await": "^0.7.0",
     "babel-plugin-transform-class-properties": "^6.24.1",
     "babel-preset-env": "^1.7.0",
+    "body-parser": "^1.18.3",
+    "express": "^4.16.3",
     "gulp": "^3.9.1",
     "gulp-babel": "^7.0.1",
     "gulp-bufferify": "^1.0.0",
