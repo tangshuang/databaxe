@@ -11,9 +11,9 @@ const $requestQueue = {}
 const $transactions = {}
 
 export default class DataBaxe {
+  static sanpshotsMaxCount = 10
   static defaultSettings = {
     debug: false,
-    sanpshotsMaxCount: 0,
     expires: 0,
   }
   static defaultOptions = {
@@ -65,10 +65,7 @@ export default class DataBaxe {
       let hash = getObjectHashcode(source)
 
       if (!$dataSources[hash]) {
-        $dataSources[hash] = Object.assign({}, source, { callbacks: [], sanpshotsMaxCount: this.settings.sanpshotsMaxCount })
-      }
-      else {
-        $dataSources[hash].sanpshotsMaxCount = Math.max(this.settings.sanpshotsMaxCount, $dataSources[hash].sanpshotsMaxCount)
+        $dataSources[hash] = Object.assign({}, source, { callbacks: [] })
       }
 
       transformers = (transformers||[]).map(transformer => new HelloWorker(transformer))
@@ -140,7 +137,7 @@ export default class DataBaxe {
       }
     })
 
-    await this._putData(requestId, $source, data)
+    await this._putData(requestId, data)
     await asyncEach(callbacks, async (item) => {
       let data = await this._getData(requestId)
       let callback = $async(item.callback)
@@ -244,9 +241,7 @@ export default class DataBaxe {
   async _getData(requestId) {
     return await $dataDB.get(requestId)
   }
-  async _putData(requestId, $source, data) {
-    let { sanpshotsMaxCount } = $source
-
+  async _putData(requestId, data) {
     let time = Date.now()
     let item = {
       requestId,
@@ -254,14 +249,15 @@ export default class DataBaxe {
       data,
     }
 
+    let sanpshotsMaxCount = DataBaxe.sanpshotsMaxCount
     let existsData = await $dataDB.get(requestId)
     if (existsData) {
       await $snapshotsDB.put(existsData)
       if (sanpshotsMaxCount) {
         let snapshots = await $snapshotsDB.query('requestId', requestId)
         if (snapshots.length > sanpshotsMaxCount) {
-          let lastSnapshot = snapshots[snapshots.length - 1]
-          await $snapshotsDB.delete(lastSnapshot.id)
+          let oldestSnapshot = snapshots[0]
+          await $snapshotsDB.delete(oldestSnapshot.id)
         }
       }
     }
