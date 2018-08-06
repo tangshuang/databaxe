@@ -23,16 +23,20 @@ export function merge(target, ...sources) {
     keys.forEach((key) => {
       const value = source[key]
       if (isObject(value)) {
-        if (!target[key]) {
-          Object.assign(target, { [key]: {} })
+        if (!target[key] || !isObject(target[key])) {
+          target[key] = {}
         }
         merge(target[key], value)
       } 
       else {
-        Object.assign(target, { [key]: value })
+        target[key] = value
       }
     })
   }
 
   return merge(target, ...sources)
+}
+
+export function assign(target, ...srouces) {
+  return Object.assign(target, ...sources)
 }
