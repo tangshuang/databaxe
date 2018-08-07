@@ -1,6 +1,6 @@
 {
   "name": "databaxe",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "A modern data request and store tool for frontend.",
   "main": "dist/databaxe.js",
   "scripts": {
@@ -10,7 +10,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/tangshuang/dataker.git"
+    "url": "git+https://github.com/tangshuang/databaxe.git"
   },
   "keywords": [
     "data"
@@ -18,9 +18,9 @@
   "author": "tangshuang",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/tangshuang/dataker/issues"
+    "url": "https://github.com/tangshuang/databaxe/issues"
   },
-  "homepage": "https://github.com/tangshuang/dataker#readme",
+  "homepage": "https://github.com/tangshuang/databaxe#readme",
   "dependencies": {
     "axios": "^0.18.0",
     "hello-async": "^3.0.0",
