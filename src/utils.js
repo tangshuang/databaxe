@@ -37,6 +37,6 @@ export function merge(target, ...sources) {
   return merge(target, ...sources)
 }
 
-export function assign(target, ...srouces) {
+export function assign(target, ...sources) {
   return Object.assign(target, ...sources)
 }

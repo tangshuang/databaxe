@@ -11,7 +11,7 @@ const $requestQueue = {}
 const $transactions = {}
 
 export default class DataBaxe {
-  static sanpshotsMaxCount = 10
+  static snapshotsMaxCount = 10
   static defaultSettings = {
     debug: false,
     expires: 0,
@@ -167,10 +167,23 @@ export default class DataBaxe {
 
     return true
   }
-  async get(id, params, options, force) {
+  async get(id, params = {}, options = {}, force = false) {
     let dataSource = this.dataSources[id]
     if (!dataSource) {
       throw new Error('dataSource ' + id + ' is not exists.')
+    }
+
+    let _url = interpolate(dataSource.url, params)
+    let _options = merge({}, dataSource.options, options)
+
+    // put, delete, patch is not allowed when use `get`
+    if (['put', 'delete', 'patch'].indexOf(_options.method.toLowerCase())) {
+      throw new Error(_options.method + ' is not allowed when you get data.')
+    }
+
+    // delete options.data when use 'get' method
+    if (_options.method.toLowerCase() === 'get') {
+      delete _options.data
     }
 
     // add dependences
@@ -180,9 +193,6 @@ export default class DataBaxe {
       this._dep.options = options
       this._addDep()
     }
-
-    let _url = interpolate(dataSource.url, params)
-    let _options = merge({}, dataSource.options, options)
 
     let requestId = getObjectHashcode({ 
       url: _url,
@@ -229,8 +239,14 @@ export default class DataBaxe {
     // if expires is not set, it means user want to use current cached data any way
     // when data cache is not expired, use it
     if (dataSource.expires && item.time + dataSource.expires < Date.now()) {
-      let result = await request()
-      return result
+      try {
+        let result = await request()
+        return result
+      }
+      // if request fail, return data from database, even though the data is not the latest.
+      catch(e) {
+        this.debug('warn', 'Local data will be used.', e)
+      }
     }
     
     let output = await transfer(item.data)
@@ -247,13 +263,13 @@ export default class DataBaxe {
       data,
     }
 
-    let sanpshotsMaxCount = DataBaxe.sanpshotsMaxCount
+    let snapshotsMaxCount = DataBaxe.snapshotsMaxCount
     let existsData = await $dataDB.get(requestId)
     if (existsData) {
       await $snapshotsDB.put(existsData)
-      if (sanpshotsMaxCount) {
+      if (snapshotsMaxCount) {
         let snapshots = await $snapshotsDB.query('requestId', requestId)
-        if (snapshots.length > sanpshotsMaxCount) {
+        if (snapshots.length > snapshotsMaxCount) {
           let oldestSnapshot = snapshots[0]
           await $snapshotsDB.delete(oldestSnapshot.id)
         }
@@ -262,7 +278,7 @@ export default class DataBaxe {
 
     await $dataDB.put(item)
   }
-  async save(id, params = {}, data, options = {}) {
+  async save(id, params = {}, data = {}, options = {}) {
     let dataSource = this.dataSources[id]
     if (!dataSource) {
       throw new Error('dataSource ' + id + ' is not exists.')
@@ -278,6 +294,11 @@ export default class DataBaxe {
     
     // method should not be get in `save`
     _options.method = _options.method && _options.method.toLowerCase() !== 'get' ? _options.method : 'post'
+
+    // options.data is not allowed when 'delete'
+    if (_options.method.toLowerCase() === 'delete') {
+      delete _options.data
+    }
 
     let requestId = getObjectHashcode({ 
       url: _url,
@@ -356,7 +377,16 @@ export default class DataBaxe {
 
   debug(...args) {
     if (this.settings.debug) {
-      console.log(this.id, ...args)
+      const id = '[databaxe:' + this.id + ']'
+      const level = args[0]
+      const isInvoke = typeof console[level] === 'function'
+
+      if (!isInvoke) {
+        console.trace(id, ...args)
+        return
+      }
+
+      console[level](id, ...args)
     }
   }
 }

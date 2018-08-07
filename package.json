@@ -1,7 +1,7 @@
 {
   "name": "databaxe",
   "version": "1.0.0",
-  "description": "A data management tool for frontend.",
+  "description": "A modern data request and store tool for frontend.",
   "main": "dist/databaxe.js",
   "scripts": {
     "build": "node build.js",
