@@ -1,6 +1,6 @@
 import HelloIndexedDB from 'hello-indexeddb'
 
-export const $dataDB = new HelloIndexedDB({
+const $DB = new HelloIndexedDB({
   name: 'databaxe',
   version: 1,
   stores: [
@@ -23,6 +23,7 @@ export const $dataDB = new HelloIndexedDB({
       ],
     },
   ],
-  use: 'data',
 })
-export const $snapshotsDB = $dataDB.use('snapshots')
+
+export const $dataDB = $DB.use('data')
+export const $snapshotsDB = $DB.use('snapshots')

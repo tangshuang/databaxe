@@ -66,7 +66,7 @@ export default class DataBaxe {
         $dataSources[hash] = assign({}, source, { callbacks: [] })
       }
 
-      transformers = (transformers||[]).map(transformer => new HelloWorker(transformer))
+      transformers = transformers || []
       expires = expires || this.settings.expires
       this.dataSources[id] = assign({}, source, { hash, transformers, expires })
     })
@@ -202,7 +202,7 @@ export default class DataBaxe {
     const transfer = async (data) => {
       let result = data
       await asyncIterate(dataSource.transformers, async (transformer, i, next) => {
-        result = await transformer.invoke(result)
+        result = await HelloWorker.run(transformer, result)
         next()
       })
       return result
