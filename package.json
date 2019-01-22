@@ -4,7 +4,7 @@
   "description": "A modern data request and store tool for frontend.",
   "main": "dist/databaxe.js",
   "scripts": {
-    "build": "node build.js",
+    "build": "webpack",
     "watch": "webpack --watch=true",
     "start": "node demo/server.js"
   },
@@ -24,26 +24,18 @@
   "dependencies": {
     "axios": "^0.18.0",
     "hello-async": "^3.0.0",
-    "hello-indexeddb": "^1.2.3",
-    "hello-worker": "^1.1.1",
+    "hello-storage": "^2.4.0",
     "interpolate": "^0.1.0",
-    "lodash.merge": "^4.6.1",
     "object-hashcode": "^1.1.0"
   },
   "devDependencies": {
-    "babel-core": "^6.26.3",
-    "babel-loader": "^7.1.5",
-    "babel-plugin-transform-async-await": "^0.7.0",
+    "@babel/core": "^7.2.2",
+    "@babel/preset-env": "^7.3.0",
+    "babel-loader": "^8.0.5",
     "babel-plugin-transform-class-properties": "^6.24.1",
-    "babel-preset-env": "^1.7.0",
     "body-parser": "^1.18.3",
-    "express": "^4.16.3",
-    "gulp": "^3.9.1",
-    "gulp-babel": "^7.0.1",
-    "gulp-bufferify": "^1.0.0",
-    "webpack": "^4.16.4",
-    "webpack-bufferify": "^1.0.1",
-    "webpack-cli": "^3.1.0",
-    "webpack-stream": "^5.1.0"
+    "express": "^4.16.4",
+    "webpack": "^4.29.0",
+    "webpack-cli": "^3.2.1"
   }
 }

@@ -1,13 +1,12 @@
-var webpackbufferify = require('webpack-bufferify')
-
 module.exports = {
   mode: 'none',
   entry: __dirname + '/src/databaxe.js',
   output: {
     path: __dirname + '/dist',
-    filename: 'databaxe.bundle.js',
-    library: 'DataBaxe',
+    filename: 'databaxe.js',
+    library: 'databaxe',
     libraryTarget: 'umd',
+    globalObject: 'typeof window !== undefined ? window : typeof global !== undefined ? global : typeof self !== undefined ? self : this',
   },
   module: {
     rules: [
@@ -17,10 +16,11 @@ module.exports = {
       },
     ]
   },
-  plugins: [
-    webpackbufferify(function(content) {
-      content = content.replace('exports.default = DataBaxe;', 'module.exports = DataBaxe;')
-      return content
-    }),
-  ],
+  externals: {
+    'interpolate': true,
+    'object-hashcode': true,
+    'hello-async': true,
+    'axios': true,
+    'hello-storage': true,
+  },
 }

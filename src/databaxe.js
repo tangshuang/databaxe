@@ -1,76 +1,99 @@
 import interpolate from 'interpolate'
 import { getObjectHashcode } from 'object-hashcode'
-import HelloWorker from 'hello-worker'
 import { isEqual, merge, assign } from './utils'
-import { asyncEach, asyncIterate, $async } from 'hello-async'
-import { $dataDB, $snapshotsDB } from './db'
+import { asyncE, asyncM, $async } from 'hello-async'
 import axios from 'axios'
+import HelloStorage from 'hello-storage'
 
 const $dataSources = {}
 const $requestQueue = {}
 const $transactions = {}
 
-export default class DataBaxe {
-  static snapshotsMaxCount = 10
+export class DataBaxe {
   static defaultSettings = {
     debug: false,
-    expires: 0,
-  }
-  static defaultOptions = {
-    baseURL: '',
-    method: 'get',
+    expire: 0,
+    baseURL: '', // backend url base
+    storage: null, // storage for hello-storage
+    options: {}, // default options for axios
   }
 
-  constructor(settings, options) {
+  constructor(settings) {
     this.dataSources = {}
-    this.id = (settings.id || 'databaxe.' + Date.now())  + '.' + parseInt(Math.random() * 10000)
+    this.id = (settings.id || 'databaxe.' + Date.now())  + '.' + parseInt(Math.random() * 10000, 10)
     this.settings = assign({}, DataBaxe.defaultSettings, settings)
-    this.options = merge({}, DataBaxe.defaultOptions, options)
     this._deps = []
+
+    this.storage = new HelloStorage({
+      namespace: 'databaxe',
+      storage: this.settings.storage,
+    })
   }
+
+  /**
+   * add data source into databaxe,
+   * dataSources can be an array or an object,
+   * the object strcuture:
+   *
+   * {
+   *   // id should be unique in this instance, it will be used by `get`
+   *   id: 'book',
+   *   // url can contain interpolation, it will be replaced by params of `get`
+   *   url: '/api/v2/books/{id}',
+   *   // options will be passed into axios
+   *   options: {
+   *     method: 'GET',
+   *     headers: {
+   *       'Access-Token': window.authtoken,
+   *     },
+   *   },
+   *   // transform is a function to convert response data, the output will be the final data of `get`
+   *   // data in storage is always the original data
+   *   transform: function(data) {
+   *     return data
+   *   },
+   * }
+   *
+   * @param {*} dataSources
+   */
   async register(dataSources) {
     // a data source object or an array are both allowed
     if (!Array.isArray(dataSources)) {
       dataSources = [dataSources]
     }
 
-    dataSources.forEach((dataSource) => {
-      let { id, url, options, transformers, expires } = dataSource
-      let { method, headers, baseURL, params, data, auth } = merge({}, this.options, options)
+    await asyncM(dataSources, (dataSource) => {
+      let { id, url, options, transform } = dataSource
+      let { baseURL } = this.settings
+      let expire = dataSource.expire || this.settings.expire
 
-      let _url = url.indexOf('http://') === 0 || url.indexOf('https://') === 0 ? url : baseURL ? baseURL + url : url
-      let _options = {}
-      if (method) {
-        _options.method = method
-      }
-      if (headers) {
-        _options.headers = headers
-      }
-      if (params) {
-        _options.params = params
-      }
-      if (data) {
-        _options.data = data
-      }
-      if (auth) {
-        _options.auth = auth
-      }
+      url = url.indexOf('http://') === 0 || url.indexOf('https://') === 0 ? url : baseURL ? baseURL + url : url
+      options = merge({}, this.settings.options, options)
 
-      let source = {
-        url: _url,
-        options: _options,
-      }
+      let source = { url, options }
       let hash = getObjectHashcode(source)
 
       if (!$dataSources[hash]) {
         $dataSources[hash] = assign({}, source, { callbacks: [] })
       }
 
-      transformers = transformers || []
-      expires = expires || this.settings.expires
-      this.dataSources[id] = assign({}, source, { hash, transformers, expires })
+      this.dataSources[id] = assign({}, source, { hash, transform, expire })
     })
   }
+
+  /**
+   * subscribe the change of a data source stored data,
+   * when a data source's true data in storage changed,
+   * callback function will run.
+   *
+   * Notice that, data sources are shared among databaxe instances,
+   * if another databaxe instance change the data of a same hash data source,
+   * current databaxe instance's callback will be triggered too.
+   *
+   * @param {*} id the data source id
+   * @param {*} callback a function which receive (data, options, params) which passed by `get`
+   * @param {*} priority
+   */
   async subscribe(id, callback, priority = 10) {
     let dataSource = this.dataSources[id]
     if (!dataSource) {
@@ -79,50 +102,13 @@ export default class DataBaxe {
 
     let $source = $dataSources[dataSource.hash]
     let callbacks = $source.callbacks
+
     callbacks.push({
       context: this.id,
       callback,
       priority,
     })
-  }
-  async unsubscribe(id, callback) {
-    let dataSource = this.dataSources[id]
-    if (!dataSource) {
-      throw new Error('data source ' + id + ' is not exists.')
-    }
 
-    let $source = $dataSources[dataSource.hash]
-    let callbacks = $source.callbacks
-
-    $source.callbacks = callbacks.filter((item) => {
-      if (item.context === this.id) {
-        if (callback === undefined) {
-          return false
-        }
-        if (item.callback === callback) {
-          return false
-        }
-      }
-      return true
-    })
-  }
-  async dispatch(id, params, options, data) {
-    let dataSource = this.dataSources[id]
-    if (!dataSource) {
-      throw new Error('data source ' + id + ' is not exists.')
-    }
-
-    let _url = interpolate(dataSource.url, params)
-    let _options = merge({}, dataSource.options, options)
-
-    let requestId = getObjectHashcode({ 
-      url: _url,
-      options: _options,
-    })
-    
-    let $source = $dataSources[dataSource.hash]
-    let callbacks = $source.callbacks
-    
     callbacks.sort((a, b) => {
       if (a.priority > b.priority) {
         return -1
@@ -134,14 +120,65 @@ export default class DataBaxe {
         return 0
       }
     })
+  }
 
-    await this._putData(requestId, data)
-    await asyncEach(callbacks, async (item) => {
-      let data = await this._getData(requestId)
-      let callback = $async(item.callback)
-      return await callback(data, params, options)
+  /**
+   * the reverse function of subscribe
+   * @param {*} id
+   * @param {*} callback
+   */
+  async unsubscribe(id, callback) {
+    let dataSource = this.dataSources[id]
+    if (!dataSource) {
+      throw new Error('data source ' + id + ' is not exists.')
+    }
+
+    let $source = $dataSources[dataSource.hash]
+    let callbacks = $source.callbacks
+
+    callbacks.forEach((item, i) => {
+      if (item.context === this.id) {
+        if (callback === undefined || item.callback === callback) {
+          callbacks.splice(i, 1)
+        }
+      }
     })
   }
+
+  /**
+   * notify the change of a data source's data,
+   * all callbacks will be triggered.
+   *
+   * Notice that, all same hash data sources' callbacks among all databaxe instances will be triggered.
+   *
+   * @param {*} id which data source id of this instance to trigger
+   * @param {*} data the data to notice change
+   * @param {*} options options which is used to get the data
+   * @param {*} params params which is used to get the data
+   */
+  async dispatch(id, data, options = {}, params = {}) {
+    let dataSource = this.dataSources[id]
+    if (!dataSource) {
+      throw new Error('data source ' + id + ' is not exists.')
+    }
+
+    let _url = interpolate(dataSource.url, params)
+    let _options = merge({}, dataSource.options, options)
+    let requestId = getObjectHashcode({
+      url: _url,
+      options: _options,
+    })
+    await this._putData(requestId, data)
+
+    let $source = $dataSources[dataSource.hash]
+    let callbacks = $source.callbacks
+    await asyncE(callbacks, async (item) => {
+      let data = await this._getData(requestId)
+      let callback = $async(item.callback)
+      return await callback(data, options, params)
+    })
+  }
+
   _wrapDep(fun) {
     this._dep = {
       target: fun,
@@ -167,7 +204,18 @@ export default class DataBaxe {
 
     return true
   }
-  async get(id, params = {}, options = {}, force = false) {
+
+  /**
+   * get data from databaxe by data source id,
+   * if data is not existed or expired, databaxe will send an ajax request to get data from backend first,
+   * so, you will get data anyway at anytime.
+   *
+   * @param {*} id data source id
+   * @param {*} options options for axios
+   * @param {*} params params to interpolate into url
+   * @param {*} force whether to ignore existed data, if true, local data will be updated after new data back
+   */
+  async get(id, options = {}, params = {}, force = false) {
     let dataSource = this.dataSources[id]
     if (!dataSource) {
       throw new Error('dataSource ' + id + ' is not exists.')
@@ -176,8 +224,7 @@ export default class DataBaxe {
     let _url = interpolate(dataSource.url, params)
     let _options = merge({}, dataSource.options, options)
 
-    // put, delete, patch is not allowed when use `get`
-    if (['put', 'delete', 'patch'].indexOf(_options.method.toLowerCase())) {
+    if (['put', 'delete', 'patch'].indexOf(_options.method.toLowerCase()) > -1) {
       throw new Error(_options.method + ' is not allowed when you get data.')
     }
 
@@ -194,17 +241,13 @@ export default class DataBaxe {
       this._addDep()
     }
 
-    let requestId = getObjectHashcode({ 
+    let requestId = getObjectHashcode({
       url: _url,
       options: _options,
     })
 
     const transfer = async (data) => {
-      let result = data
-      await asyncIterate(dataSource.transformers, async (transformer, i, next) => {
-        result = await HelloWorker.run(transformer, result)
-        next()
-      })
+      let result = await $async(transform)(data)
       return result
     }
     const request = () => {
@@ -229,56 +272,47 @@ export default class DataBaxe {
       let result = await request()
       return result
     }
-    
+
     let item = await this._getData(requestId)
     if (!item) {
       let result = await request()
       return result
     }
 
-    // if expires is not set, it means user want to use current cached data any way
+    // if expire is not set, it means user want to use current cached data any way
     // when data cache is not expired, use it
-    if (dataSource.expires && item.time + dataSource.expires < Date.now()) {
+    if (dataSource.expire && item.time + dataSource.expire < Date.now()) {
       try {
         let result = await request()
         return result
       }
-      // if request fail, return data from database, even though the data is not the latest.
+      // if request fail, return data from databaxe, even though the data is not the latest.
       catch(e) {
         this.debug('warn', 'Local data will be used.', e)
       }
     }
-    
+
     let output = await transfer(item.data)
     return output
   }
+
   async _getData(requestId) {
-    return await $dataDB.get(requestId)
+    return await this.storage.get(requestId)
   }
   async _putData(requestId, data) {
-    let time = Date.now()
-    let item = {
-      requestId,
-      time,
-      data,
-    }
-
-    let snapshotsMaxCount = DataBaxe.snapshotsMaxCount
-    let existsData = await $dataDB.get(requestId)
-    if (existsData) {
-      await $snapshotsDB.put(existsData)
-      if (snapshotsMaxCount) {
-        let snapshots = await $snapshotsDB.query('requestId', requestId)
-        if (snapshots.length > snapshotsMaxCount) {
-          let oldestSnapshot = snapshots[0]
-          await $snapshotsDB.delete(oldestSnapshot.id)
-        }
-      }
-    }
-
-    await $dataDB.put(item)
+    await this.storage.set(requestId, data)
   }
-  async save(id, params = {}, data = {}, options = {}) {
+
+  /**
+   * save data to backend,
+   * notice that, if the same data source id is saved in a short time, post data will be merged, and only one ajax will be send.
+   *
+   * @param {*} id data source id
+   * @param {*} data post data
+   * @param {*} options axios configs
+   * @param {*} params params to interpolate into url
+   */
+  async save(id, data = {}, options = {}, params = {}) {
     let dataSource = this.dataSources[id]
     if (!dataSource) {
       throw new Error('dataSource ' + id + ' is not exists.')
@@ -288,19 +322,21 @@ export default class DataBaxe {
     if (options.data) {
       delete options.data
     }
-    
+
     let _url = interpolate(dataSource.url, params)
     let _options = merge({}, dataSource.options, options)
-    
-    // method should not be get in `save`
-    _options.method = _options.method && _options.method.toLowerCase() !== 'get' ? _options.method : 'post'
+
+    // method should not be 'get' in `save`
+    if (!_options.method || _options.method.toLowerCase() === 'get') {
+      throw new Error(`'get' method is not allowed when save data to backend.`)
+    }
 
     // options.data is not allowed when 'delete'
-    if (_options.method.toLowerCase() === 'delete') {
+    if (['post', 'put', 'patch'].indexOf(_options.method.toLowerCase()) === -1) {
       delete _options.data
     }
 
-    let requestId = getObjectHashcode({ 
+    let requestId = getObjectHashcode({
       url: _url,
       options: _options,
     })
@@ -343,19 +379,38 @@ export default class DataBaxe {
     return await tx.processing
   }
 
+  /**
+   * run functions which contains `get` in them,
+   * after running, you do not need to subscribe and the functions will auto run again when the reference data change.
+   *
+   * @example
+   * async function render() {
+   *   let data = dbx.get('id')
+   *   renderElmentWith(data)
+   * }
+   * dbx.autorun(render)
+   * // in the previous code, render will auto run again when data of data source 'id' change.
+   *
+   * @param {*} funcs
+   */
   async autorun(funcs) {
     if (!Array.isArray(funcs) && typeof funcs === 'function') {
       funcs = [funcs]
     }
-    funcs.forEach((fun) => {
+    await asyncM(funcs, (fun) => {
       this._wrapDep(fun)
     })
   }
+
+  /**
+   * the reverse function of `autorun`
+   * @param {*} funcs
+   */
   async autofree(funcs) {
     if (!Array.isArray(funcs) && typeof funcs === 'function') {
       funcs = [funcs]
     }
-    funcs.forEach(fun => {
+    await asyncM(funcs, (fun) => {
       let deps = this._deps.filter(item => item.target === fun)
       deps.forEach((dep) => {
         this.unsubscribe(dep.id, dep.callback)
@@ -364,15 +419,21 @@ export default class DataBaxe {
     })
   }
 
-  async destory() {
+  /**
+   * destroy the databaxe intance, and release memory
+   */
+  async destroy() {
     let ids = Object.keys(this.dataSources)
-    await asyncEach(ids, async (id) => {
+    await asyncM(ids, async (id) => {
       await this.unsubscribe(id)
     })
     this.dataSources = null
     this.settings = null
     this._deps = null
     this._dep = null
+
+    this.storage.clear()
+    this.storage = null
   }
 
   debug(...args) {
@@ -389,4 +450,7 @@ export default class DataBaxe {
       console[level](id, ...args)
     }
   }
+
 }
+
+export default DataBaxe

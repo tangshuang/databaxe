@@ -27,7 +27,7 @@ export function merge(target, ...sources) {
           target[key] = {}
         }
         merge(target[key], value)
-      } 
+      }
       else {
         target[key] = value
       }
@@ -37,6 +37,6 @@ export function merge(target, ...sources) {
   return merge(target, ...sources)
 }
 
-export function assign(target, ...sources) {
-  return Object.assign(target, ...sources)
+export function assign(...sources) {
+  return Object.assign(...sources)
 }

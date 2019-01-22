@@ -1,9 +1,8 @@
 {
   "presets": [
-    ["env", { "exclude": ["transform-async-to-generator", "transform-regenerator"] }]
+    ["@babel/preset-env", { "exclude": ["transform-async-to-generator", "transform-regenerator"] }]
   ],
   "plugins": [
-    "transform-class-properties", 
-    "transform-async-await"
+    "transform-class-properties"
   ]
 }
