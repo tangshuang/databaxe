@@ -1,12 +1,12 @@
 class ComponentA {
   constructor(container, DataSources) {
     this.container = container
-    this.data = new DataBaxe({ id: 'A', snapshots: 10 })
-    this.data.register(Object.assign({ id: 'studentsA' }, DataSources.STUDENTS))
-    this.data.autorun(this.render.bind(this))
+    this.dbx = new DataBaxe({ id: 'A' })
+    this.dbx.register(Object.assign({ id: 'studentsA' }, DataSources.STUDENTS))
+    this.dbx.autorun(this.render.bind(this))
   }
   async render() {
-    let students = await this.data.get('studentsA')
+    let students = await this.dbx.get('studentsA')
     let list = ''
     students.forEach(std => {
       list += '<li>' + std.name + ': ' + std.score + '</li>'

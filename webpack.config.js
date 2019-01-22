@@ -1,4 +1,4 @@
-module.exports = {
+const config = {
   mode: 'none',
   entry: __dirname + '/src/databaxe.js',
   output: {
@@ -24,3 +24,13 @@ module.exports = {
     'hello-storage': true,
   },
 }
+
+module.exports = [
+  config,
+  Object.assign({}, config, {
+    output: Object.assign({}, config.output, {
+      filename: 'databaxe.bundle.js',
+    }),
+    externals: {},
+  }),
+]

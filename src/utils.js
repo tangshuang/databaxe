@@ -40,3 +40,13 @@ export function merge(target, ...sources) {
 export function assign(...sources) {
   return Object.assign(...sources)
 }
+
+export function isFunction(value) {
+  return typeof value === 'function'
+}
+
+export function invoke(fn, ...args) {
+  if (isFunction(fn)) {
+    fn(...args)
+  }
+}

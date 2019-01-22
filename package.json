@@ -1,6 +1,6 @@
 {
   "name": "databaxe",
-  "version": "1.0.3",
+  "version": "2.0.0",
   "description": "A modern data request and store tool for frontend.",
   "main": "dist/databaxe.js",
   "scripts": {
@@ -24,7 +24,7 @@
   "dependencies": {
     "axios": "^0.18.0",
     "hello-async": "^3.0.0",
-    "hello-storage": "^2.4.0",
+    "hello-storage": "^2.4.1",
     "interpolate": "^0.1.0",
     "object-hashcode": "^1.1.0"
   },
