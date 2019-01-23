@@ -84,7 +84,7 @@ export default class MyComponent {
 It will be merged with `DataBaxe.defaultSettings`.
 
 - debug: false,
-- expire: 0,
+- expire: 0, // 0: use cache any way, -1: never use cache, +Num: time to cache. default is 0
 - baseURL: '', // backend url base
 - database: {}, // storage options for hello-storage
 - options: {}, // default options for axios

@@ -220,6 +220,12 @@ export class DataBaxe {
     })
     await this._putData(requestId, data)
     invoke(this.settings.onUpdate, id, data)
+    this.debug({
+      id,
+      url: _url,
+      options: _options,
+      data,
+    })
 
     let $source = $dataSources[dataSource.hash]
     let callbacks = $source.callbacks
@@ -362,18 +368,12 @@ export class DataBaxe {
     // if expire is not set, it means user want to use current cached data any way
     // when data cache is not expired, use it
     if (dataSource.expire && cache.time + dataSource.expire < Date.now()) {
-      try {
-        let result = await request()
-        return result
-      }
-      // if request fail, return data from databaxe, even though the data is not the latest.
-      catch(e) {
-        this.debug('warn', 'Local data will be used.', e)
-      }
+      let result = await request()
+      return result
     }
 
-    let output = await transfer(cache.data)
-    return output
+    let result = await transfer(cache.data)
+    return result
   }
 
   async _getData(requestId) {
@@ -595,15 +595,7 @@ export class DataBaxe {
   debug(...args) {
     if (this.settings.debug) {
       const id = '[databaxe:' + this.id + ']'
-      const level = args[0]
-      const isInvoke = typeof console[level] === 'function'
-
-      if (!isInvoke) {
-        console.trace(id, ...args)
-        return
-      }
-
-      console[level](id, ...args)
+      console.log(id, ...args)
     }
   }
 
