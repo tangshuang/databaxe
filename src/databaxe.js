@@ -479,6 +479,63 @@ export class DataBaxe {
   }
 
   /**
+   * design for restful api,
+   * a data source is made as get/post/delete by its options.method,
+   * so it can be request by only one method
+   *
+   * @example
+   *
+   * let dataSources = [
+   *   {
+   *     id: 'USERS_LIST',
+   *     url: '/api/v2/users'
+   *   },
+   *   {
+   *     id: 'USER_BY_ID',
+   *     url: '/api/v2/users/{userId}'
+   *   },
+   *   {
+   *     id: 'USER_CREATE',
+   *     url: '/api/v2/users',
+   *     options: { method: 'POST' }
+   *   },
+   *   {
+   *     id: 'USER_UPDATE',
+   *     url: '/api/v2/users/{userId}',
+   *     options: { method: 'PUT' }
+   *   }
+   * ]
+   *
+   * let users = await this.request('USERS_LIST') // get list
+   * let user = await this.request('USER_BY_ID', { userId: 'xxx' }) // get by id
+   * this.request('USER_CREATE', newUserData) // create
+   * this.request('USER_UPDATE', newUserData, { userId: 'xxx' }) // update
+   *
+   * @param {*} id
+   * @param {*} data
+   * @param {*} params
+   */
+  request(id, data, params) {
+    let dataSource = this.dataSources[id]
+    if (!dataSource) {
+      throw new Error('dataSource ' + id + ' is not exists.')
+    }
+
+    let method = dataSource.options ? dataSource.options.method || 'GET' : 'GET'
+    method = method.toUpperCase()
+
+    if (method === 'GET') {
+      if (data) {
+        params = data
+      }
+      return this.get(id, params)
+    }
+    else {
+      return this.save(id, data, params)
+    }
+  }
+
+  /**
    * run functions which contains `get` in them,
    * after running, you do not need to subscribe and the functions will auto run again when the reference data change.
    *
