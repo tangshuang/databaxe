@@ -17,11 +17,11 @@ export class DataBaxe {
     database: {}, // storage options for hello-storage
     options: {}, // default options for axios
 
-    onInit: null,
-    onRegister: null,
-    onUpdate: null,
-    onRequest: null,
-    onResponse: null,
+    onInit: null, // after init
+    onRegister: null, // after data source registered
+    onUpdate: null, // after saving to database
+    onRequest: null, // before ajax send
+    onResponse: null, // after ajax back
   }
 
   constructor(settings) {
@@ -219,7 +219,6 @@ export class DataBaxe {
       options: _options,
     })
     await this._putData(requestId, data)
-
     invoke(this.settings.onUpdate, id, data)
 
     let $source = $dataSources[dataSource.hash]
@@ -325,9 +324,14 @@ export class DataBaxe {
         return $requestQueue[requestId]
       }
 
-      invoke(this.settings.onRequest, id, _url, _options)
+      let info = {
+        url: _url,
+        options: _options,
+      }
+      invoke(this.settings.onRequest, id, info)
 
-      $requestQueue[requestId] = axios(_url, _options).then((res) => {
+      let { url, options } = info
+      $requestQueue[requestId] = axios(url, options).then((res) => {
         $requestQueue[requestId] = null
 
         invoke(this.settings.onResponse, id, res)
