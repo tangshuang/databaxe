@@ -103,7 +103,7 @@ export class DataBaxe {
    *
    * @example
    *
-   * this.alias('key', function(options, params, force) {
+   * this.alias('key', function(params, options, force) {
    *   let [data1, data2] = Promise.all([
    *     this.get('key1'), // use `this` in callback function
    *     this.get('key2'),
@@ -137,7 +137,7 @@ export class DataBaxe {
    * current databaxe instance's callback will be triggered too.
    *
    * @param {*} id the data source id
-   * @param {*} callback a function which receive (data, options, params) which passed by `get`
+   * @param {*} callback a function which receive (data, params, options) which passed by `get`
    * @param {*} priority
    */
   async subscribe(id, callback, priority = 10) {
@@ -206,7 +206,7 @@ export class DataBaxe {
    * @param {*} options options which is used to get the data
    * @param {*} params params which is used to get the data
    */
-  async dispatch(id, data, options = {}, params = {}) {
+  async dispatch(id, data, params = {}, options = {}) {
     let dataSource = this.dataSources[id]
     if (!dataSource) {
       throw new Error('data source ' + id + ' is not exists.')
@@ -227,7 +227,7 @@ export class DataBaxe {
     await asyncE(callbacks, async (item) => {
       let data = await this._getData(requestId)
       let callback = $async(item.callback)
-      return await callback(data, options, params)
+      return await callback(data, params, options)
     })
   }
 
@@ -263,11 +263,11 @@ export class DataBaxe {
    * so, you will get data anyway at anytime.
    *
    * @param {*} id data source id
-   * @param {*} options options for axios
    * @param {*} params params to interpolate into url
+   * @param {*} options options for axios
    * @param {*} force whether to ignore existed data, if true, local data will be updated after new data back
    */
-  async get(id, options, params, force = false) {
+  async get(id, params, options, force = false) {
     let dataSource = this.dataSources[id]
     if (!dataSource) {
       let aliasSource = this.aliasSources[id]
@@ -277,7 +277,7 @@ export class DataBaxe {
 
       // use alias to request
       let { callback } = aliasSource
-      let result = await $async(callback)(options, params, force)
+      let result = await $async(callback)(params, options, force)
       return result
     }
 
@@ -334,7 +334,7 @@ export class DataBaxe {
 
         return res.data
       }).then((data) => {
-        return this.dispatch(id, data, options, params).then(() => data)
+        return this.dispatch(id, data, params, options).then(() => data)
       }).then((data) => {
         return transfer(data)
       }).catch((e) => {
@@ -391,10 +391,10 @@ export class DataBaxe {
    *
    * @param {*} id data source id
    * @param {*} data post data
-   * @param {*} options axios configs
    * @param {*} params params to interpolate into url
+   * @param {*} options axios configs
    */
-  async save(id, data, options, params) {
+  async save(id, data, params, options) {
     let dataSource = this.dataSources[id]
     if (!dataSource) {
       let aliasSource = this.aliasSources[id]
@@ -404,7 +404,7 @@ export class DataBaxe {
 
       // use alias to request
       let { callback } = aliasSource
-      let result = await $async(callback)(options, params, force)
+      let result = await $async(callback)(params, options, force)
       return result
     }
 

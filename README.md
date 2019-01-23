@@ -36,7 +36,7 @@ const { DataBaxe } = window.databaxe
 ## Usage
 
 ```js
-const dbx = new DataBaxe(settings, options)
+const dbx = new DataBaxe(settings)
 ```
 
 ```js
@@ -133,13 +133,13 @@ Notice, when data changed (new data requested from server side), all callback fu
 
 Datasource id.
 
-**callback(data, options, params)**
+**callback(data, params, options)**
 
 Callback function when request successfully from backend data api, and new data is put into database.
 
 - data: new data from api
-- options: axios options, options.method should not be 'put', 'delete', 'patch'
 - params: interpolations for url
+- options: axios options, options.method should not be 'put', 'delete', 'patch'
 
 ```
 dbx.subscribe('myid', (data) => {
@@ -174,7 +174,7 @@ If callback is 'undefined', all callbacks of this datasource will be removed.
 
 You must to do this before you destroy your component, or you will face memory problem.
 
-### dispatch(id, params, options, data)
+### dispatch(id, data, params, options)
 
 _DO NOT USE THIS METHOD IF YOU DO NOT SURE WHAT IT WILL DO._
 
@@ -182,7 +182,7 @@ Save data to database to replace old data.
 Call all callback functions which are appended to this data source's callback list.
 You SHOULD notice that, not only this DataBaxe intance's callbacks, but also all callbacks of others will be triggered.
 
-### get(id, options, params, force)
+### get(id, params, options, force)
 
 Get data from database and return a Promise instance. If data is not exists, it will request data from server side.
 Don't be worry about several calls. If in a page has several components request a url at the same time, only one request will be sent, and all of them will get the same Promise instance and will be notified by subscribed callback functions.
@@ -196,6 +196,18 @@ If not set, data in local database will always be used if exist, so it is recomm
 If there is data in database, and expired, and request fail, local database data will be used again. A warn message will be throw out in console if `debug` is true.
 
 *Notice: you do not get the latest data request from server side, you just get latest data from local database.*
+
+**params**
+
+To replace interpolations in `url` option. For example, your data source url is 'https://xxx/{user}/{no}', you can do like this:
+
+```
+async function() {
+  let data = await dbx.get('myid', { user: 'lily', no: '1' })
+}
+```
+
+`params` is required. If there is no params, set `{}` instead.
 
 **options**
 
@@ -225,18 +237,6 @@ dbx.get('myid').then((data) => {
 
 `options` is required. Set `{}` if you do not have options.
 
-**params**
-
-To replace interpolations in `url` option. For example, your data source url is 'https://xxx/{user}/{no}', you can do like this:
-
-```
-async function() {
-  let data = await dbx.get('myid', { user: 'lily', no: '1' })
-}
-```
-
-`params` is required. If there is no params, set `{}` instead.
-
 **force**
 
 Boolean. Wether to request data directly from server side, without using local cache:
@@ -249,7 +249,7 @@ dbx.save('myid', {}, myData).then(async () => {
 
 Notice: when you forcely request, subscribers will be fired after data come back, and local database will be update too. So it is a good way to use force request when you want to refresh local cached data.
 
-### save(id, data, options, params)
+### save(id, data, params, options)
 
 To save data to server side, I provide a save method. You can use it like put/post operation:
 
@@ -267,13 +267,14 @@ datasource id.
 
 post data.
 
+**params**
+
+Interpolations replacements variables.
+
 **options**
 
 Axios config.
 
-**params**
-
-Interpolations replacements variables.
 
 **@return**
 
