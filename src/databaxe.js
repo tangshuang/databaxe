@@ -118,12 +118,13 @@ export class DataBaxe {
    *
    * @param {*} id
    * @param {*} callback a function to return data
+   * @param {boolean} isSave whether to use save method, if false, use get method, default is false
    */
-  async alias(id, callback) {
+  async alias(id, callback, isSave) {
     if (!isFunction(callback)) {
       return
     }
-    this.aliasSources[id] = { callback: callback.bind(this) }
+    this.aliasSources[id] = { callback: callback.bind(this), isSave }
   }
 
   /**
@@ -270,7 +271,7 @@ export class DataBaxe {
     let dataSource = this.dataSources[id]
     if (!dataSource) {
       let aliasSource = this.aliasSources[id]
-      if (!aliasSource) {
+      if (!aliasSource || aliasSource.isSave) {
         throw new Error('dataSource ' + id + ' is not exists.')
       }
 
@@ -396,7 +397,15 @@ export class DataBaxe {
   async save(id, data, options, params) {
     let dataSource = this.dataSources[id]
     if (!dataSource) {
-      throw new Error('dataSource ' + id + ' is not exists.')
+      let aliasSource = this.aliasSources[id]
+      if (!aliasSource || !aliasSource.isSave) {
+        throw new Error('dataSource ' + id + ' is not exists.')
+      }
+
+      // use alias to request
+      let { callback } = aliasSource
+      let result = await $async(callback)(options, params, force)
+      return result
     }
 
     data = data || {}
