@@ -25,10 +25,8 @@ export class DataBaxe {
   }
 
   constructor(settings) {
-    this.dataSources = {}
     this.id = (settings.id || 'databaxe.' + Date.now())  + '.' + parseInt(Math.random() * 10000, 10)
     this.settings = assign({}, DataBaxe.defaultSettings, settings)
-    this._deps = []
 
     this.storage = new HelloStorage(Object.assign({
       namespace: 'databaxe',
@@ -37,6 +35,10 @@ export class DataBaxe {
     }, this.settings.database, {
       async: true,
     }))
+
+    this.dataSources = {}
+    this.aliasSources = {}
+    this._deps = []
 
     invoke(this.settings.onInit)
   }
@@ -92,6 +94,36 @@ export class DataBaxe {
 
       invoke(this.settings.onRegister, id)
     })
+  }
+
+  /**
+   * alias a id to get data,
+   * it makes data management more comfortable.
+   * Notice, it does not support subscribe.
+   *
+   * @example
+   *
+   * this.alias('key', function(options, params, force) {
+   *   let [data1, data2] = Promise.all([
+   *     this.get('key1'), // use `this` in callback function
+   *     this.get('key2'),
+   *   ])
+   *   return {
+   *     company: data1.company,
+   *     users: data2.users,
+   *   }
+   * })
+   *
+   * let info = await this.get('key') // use the id key to get callback output
+   *
+   * @param {*} id
+   * @param {*} callback a function to return data
+   */
+  async alias(id, callback) {
+    if (!isFunction(callback)) {
+      return
+    }
+    this.aliasSources[id] = { callback: callback.bind(this) }
   }
 
   /**
@@ -237,7 +269,15 @@ export class DataBaxe {
   async get(id, options, params, force = false) {
     let dataSource = this.dataSources[id]
     if (!dataSource) {
-      throw new Error('dataSource ' + id + ' is not exists.')
+      let aliasSource = this.aliasSources[id]
+      if (!aliasSource) {
+        throw new Error('dataSource ' + id + ' is not exists.')
+      }
+
+      // use alias to request
+      let { callback } = aliasSource
+      let result = await $async(callback)(options, params, force)
+      return result
     }
 
     params = params || {}
