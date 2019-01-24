@@ -76,7 +76,15 @@ export class DataBaxe {
     }
 
     await asyncM(dataSources, (dataSource) => {
-      let { id, url, options, transform } = dataSource
+      let { id, url, options, transform, callback, type } = dataSource
+
+      // treat as an alias action
+      if (!url && callback) {
+        this.alias(id, callback, type)
+        invoke(this.settings.onRegister, id)
+        return
+      }
+
       let { baseURL } = this.settings
       let expire = dataSource.expire || this.settings.expire
 
@@ -118,13 +126,17 @@ export class DataBaxe {
    *
    * @param {*} id
    * @param {*} callback a function to return data
-   * @param {boolean} isSave whether to use save method, if false, use get method, default is false
+   * @param {'get'|'save'} type which method to use to request
    */
-  async alias(id, callback, isSave) {
-    if (!isFunction(callback)) {
-      return
+  async alias(id, callback, type = 'get') {
+    let dataSource = this.dataSources[id]
+    if (dataSource) {
+      throw new Error('data source ' + id + ' is existing.')
     }
-    this.aliasSources[id] = { callback: callback.bind(this), isSave }
+    if (!isFunction(callback)) {
+      throw new Error('data source ' + id + ' should have callback function.')
+    }
+    this.aliasSources[id] = { callback: callback.bind(this), type }
   }
 
   /**
@@ -143,7 +155,7 @@ export class DataBaxe {
   async subscribe(id, callback, priority = 10) {
     let dataSource = this.dataSources[id]
     if (!dataSource) {
-      throw new Error('data source ' + id + ' is not exists.')
+      throw new Error('data source ' + id + ' is not existing.')
     }
 
     if (!isFunction(callback)) {
@@ -276,12 +288,16 @@ export class DataBaxe {
     let dataSource = this.dataSources[id]
     if (!dataSource) {
       let aliasSource = this.aliasSources[id]
-      if (!aliasSource || aliasSource.isSave) {
-        throw new Error('dataSource ' + id + ' is not exists.')
+      if (!aliasSource) {
+        throw new Error('data source ' + id + ' is not exists.')
       }
 
       // use alias to request
-      let { callback } = aliasSource
+      let { callback, type } = aliasSource
+      if (type !== 'get') {
+        throw new Error('data source ' + id + ' is not type of `get`.')
+      }
+
       let result = await $async(callback)(params, options, force)
       return result
     }
@@ -402,14 +418,17 @@ export class DataBaxe {
     let dataSource = this.dataSources[id]
     if (!dataSource) {
       let aliasSource = this.aliasSources[id]
-      if (!aliasSource || !aliasSource.isSave) {
-        throw new Error('dataSource ' + id + ' is not exists.')
+      if (!aliasSource) {
+        throw new Error('data source ' + id + ' is not exists.')
       }
 
       // use alias to request
-      let { callback } = aliasSource
-      let result = await $async(callback)(params, options, force)
-      return result
+      let { callback, type } = aliasSource
+      if (type !== 'get') {
+        throw new Error('data source ' + id + ' is not type of `save`.')
+      }
+
+      return await $async(callback)(data, params, options)
     }
 
     data = data || {}
@@ -466,7 +485,7 @@ export class DataBaxe {
     }, 10)
 
     if (tx.processing) {
-      return tx.processing
+      return await tx.processing
     }
 
     const request = async () => {
@@ -481,44 +500,63 @@ export class DataBaxe {
   /**
    * design for restful api,
    * a data source is made as get/post/delete by its options.method,
-   * so it can be request by only one method
+   * so it can be request by only one method.
+   * Notice, this method does not receive `options`.
    *
    * @example
    *
    * let dataSources = [
    *   {
-   *     id: 'USERS_LIST',
+   *     id: 'users_list',
    *     url: '/api/v2/users'
    *   },
    *   {
-   *     id: 'USER_BY_ID',
+   *     id: 'user_by_id',
    *     url: '/api/v2/users/{userId}'
    *   },
    *   {
-   *     id: 'USER_CREATE',
+   *     id: 'user_create',
    *     url: '/api/v2/users',
    *     options: { method: 'POST' }
    *   },
    *   {
-   *     id: 'USER_UPDATE',
+   *     id: 'user_update',
    *     url: '/api/v2/users/{userId}',
    *     options: { method: 'PUT' }
    *   }
    * ]
    *
-   * let users = await this.request('USERS_LIST') // get list
-   * let user = await this.request('USER_BY_ID', { userId: 'xxx' }) // get by id
-   * this.request('USER_CREATE', newUserData) // create
-   * this.request('USER_UPDATE', newUserData, { userId: 'xxx' }) // update
+   * let users = await this.request('users_list') // get list
+   * let user = await this.request('user_by_id', { userId: 'xxx' }) // get by id
+   * this.request('user_create', newUserData) // create
+   * this.request('user_update', newUserData, { userId: 'xxx' }) // update
    *
    * @param {*} id
    * @param {*} data
    * @param {*} params
    */
-  request(id, data, params) {
+  async request(id, data, params) {
     let dataSource = this.dataSources[id]
     if (!dataSource) {
-      throw new Error('dataSource ' + id + ' is not exists.')
+      let aliasSource = this.aliasSources[id]
+      if (!aliasSource) {
+        throw new Error('data source ' + id + ' is not exists.')
+      }
+
+      // use alias to request
+      let { callback, type } = aliasSource
+      if (type === 'save') {
+        return await $async(callback)(data, params)
+      }
+      else if (type === 'get') {
+        if (data) {
+          params = data
+        }
+        return await $async(callback)(params)
+      }
+      else {
+        throw new Error('data source ' + id + ' is not type of `get` or `save`.')
+      }
     }
 
     let method = dataSource.options ? dataSource.options.method || 'GET' : 'GET'
@@ -528,10 +566,10 @@ export class DataBaxe {
       if (data) {
         params = data
       }
-      return this.get(id, params)
+      return await this.get(id, params)
     }
     else {
-      return this.save(id, data, params)
+      return await this.save(id, data, params)
     }
   }
 
