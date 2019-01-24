@@ -12,10 +12,16 @@ const $transactions = {}
 export class DataBaxe {
   static defaultSettings = {
     debug: false,
-    expire: 0,
-    baseURL: '', // backend url base
-    database: {}, // storage options for hello-storage
-    options: {}, // default options for axios
+    expire: 0, // cache expire time for `get` method
+    debounce: 0, // debounce time for `save` mehtod
+    database: { // storage options for hello-storage
+      namespace: 'databaxe',
+      storage: null,
+      stringify: false,
+    },
+    options: { // default options for axios
+      baseURL: '', // backend url base
+    },
 
     onInit: null, // after init
     onRegister: null, // after data source registered
@@ -27,14 +33,7 @@ export class DataBaxe {
   constructor(settings) {
     this.id = (settings.id || 'databaxe.' + Date.now())  + '.' + parseInt(Math.random() * 10000, 10)
     this.settings = assign({}, DataBaxe.defaultSettings, settings)
-
-    this.storage = new HelloStorage(Object.assign({
-      namespace: 'databaxe',
-      storage: null,
-      stringify: false,
-    }, this.settings.database, {
-      async: true,
-    }))
+    this.storage = new HelloStorage(Object.assign({}, this.settings.database, { async: true }))
 
     this.dataSources = {}
     this.aliasSources = {}
@@ -51,8 +50,10 @@ export class DataBaxe {
    * {
    *   // id should be unique in this instance, it will be used by `get`
    *   id: 'book',
+   *
    *   // url can contain interpolation, it will be replaced by params of `get`
    *   url: '/api/v2/books/{id}',
+   *
    *   // options will be passed into axios
    *   options: {
    *     method: 'GET',
@@ -60,11 +61,16 @@ export class DataBaxe {
    *       'Access-Token': window.authtoken,
    *     },
    *   },
+   *
    *   // transform is a function to convert response data, the output will be the final data of `get`
    *   // data in storage is always the original data
    *   transform: function(data) {
    *     return data
    *   },
+   *
+   *   // to hold response from backend
+   *   // it is designed to check data
+   *   take: function(res) {},
    * }
    *
    * @param {*} dataSources
@@ -85,9 +91,6 @@ export class DataBaxe {
         return
       }
 
-      let { baseURL } = this.settings
-
-      url = url.indexOf('http://') === 0 || url.indexOf('https://') === 0 ? url : baseURL ? baseURL + url : url
       options = merge({}, this.settings.options, options)
 
       let source = { url, options }
@@ -111,7 +114,7 @@ export class DataBaxe {
    *
    * @example
    *
-   * this.alias('key', function(params, options, force) {
+   * this.alias('key', function() {
    *   let [data1, data2] = Promise.all([
    *     this.get('key1'), // use `this` in callback function
    *     this.get('key2'),
@@ -134,7 +137,7 @@ export class DataBaxe {
       throw new Error('data source ' + id + ' is existing.')
     }
     if (!isFunction(callback)) {
-      throw new Error('data source ' + id + ' should have callback function.')
+      throw new Error('data alias ' + id + ' should have callback function.')
     }
     this.aliasSources[id] = { callback, type }
   }
@@ -215,55 +218,50 @@ export class DataBaxe {
    *
    * @param {*} id which data source id of this instance to trigger
    * @param {*} data the data to notice change
-   * @param {*} options options which is used to get the data
-   * @param {*} params params which is used to get the data
+   * @param {*} info info which is used to get the data
    */
-  async dispatch(id, data, params = {}, options = {}) {
+  async dispatch(id, data, info) {
     let dataSource = this.dataSources[id]
     if (!dataSource) {
       throw new Error('data source ' + id + ' is not exists.')
     }
 
-    let _url = interpolate(dataSource.url, params)
-    let _options = merge({}, dataSource.options, options)
-    let requestId = getObjectHashcode({
-      url: _url,
-      options: _options,
-    })
+    const { url, options, originalOptions } = info
+    const requestId = getObjectHashcode({ url, options })
+
     await this._putData(requestId, data)
     invoke(this.settings.onUpdate, id, data)
     this.debug({
       id,
-      url: _url,
-      options: _options,
+      url,
+      options,
       data,
     })
 
     let $source = $dataSources[dataSource.hash]
     let callbacks = $source.callbacks
+    let cache = await this._getData(requestId)
+
     await asyncE(callbacks, async (item) => {
-      let data = await this._getData(requestId)
       let callback = $async(item.callback)
-      return await callback(data, params, options)
+      return await callback(cache, originalOptions)
     })
   }
 
   _wrapDep(fun) {
-    this._dep = {
-      target: fun,
-    }
+    this._dep = { target: fun }
     fun()
     delete this._dep
   }
   _addDep() {
     let dep = this._dep
 
-    if (this._deps.find(item => item.id === dep.id && isEqual(item.params, dep.params) && isEqual(item.options, dep.options) && item.target === dep.target)) {
+    if (this._deps.find(item => item.id === dep.id && isEqual(item.options, dep.options) && item.target === dep.target)) {
       return false
     }
 
-    let callback = (data, params, options) => {
-      if (isEqual(dep.params, params) && isEqual(dep.options, options)) {
+    let callback = (data, options) => {
+      if (isEqual(dep.options, options)) {
         this._wrapDep(dep.target)
       }
     }
@@ -280,11 +278,10 @@ export class DataBaxe {
    * so, you will get data anyway at anytime.
    *
    * @param {*} id data source id
-   * @param {*} params params to interpolate into url
    * @param {*} options options for axios
    * @param {*} force whether to ignore existed data, if true, local data will be updated after new data back
    */
-  async get(id, params, options, force = false) {
+  async get(id, options, force = false) {
     let dataSource = this.dataSources[id]
     if (!dataSource) {
       let aliasSource = this.aliasSources[id]
@@ -295,41 +292,36 @@ export class DataBaxe {
       // use alias to request
       let { callback, type } = aliasSource
       if (type !== 'get') {
-        throw new Error('data source ' + id + ' is not type of `get`.')
+        throw new Error('data alias ' + id + ' is not type of `get`.')
       }
 
-      let result = await $async(callback)(params, options, force)
+      let result = await $async(callback)(options, force)
       return result
     }
 
-    params = params || {}
-    options = options || {}
 
-    let _url = interpolate(dataSource.url, params)
-    let _options = merge({}, dataSource.options, options)
-    let method = _options.method
+    const _options = merge({}, dataSource.options, options)
+    const _url = interpolate(dataSource.url, _options.symbols || {})
+    const method = _options.method
 
-    if (method && ['put', 'delete', 'patch'].indexOf(method.toLowerCase()) > -1) {
-      throw new Error(_options.method + ' is not allowed when you get data.')
+    if (method && ['get', 'post', 'headers', 'options'].indexOf(method.toLowerCase()) === -1) {
+      throw new Error('method:' + method + ' is not allowed when you get data.')
     }
 
+    delete _options.symbols
     // delete options.data when use 'get' method
-    if (!method || method.toLowerCase() === 'get') {
+    if (!method || method.toLowerCase() !== 'post') {
       delete _options.data
     }
 
     // add dependences
     if (this._dep && this._dep.target) {
       this._dep.id = id
-      this._dep.params = params
       this._dep.options = options
       this._addDep()
     }
 
-    let requestId = getObjectHashcode({
-      url: _url,
-      options: _options,
-    })
+    const requestId = getObjectHashcode({ url: _url, options: _options })
 
     const transfer = async (data) => {
       let transform = dataSource.transform
@@ -346,14 +338,10 @@ export class DataBaxe {
         return $requestQueue[requestId]
       }
 
-      let info = {
-        url: _url,
-        options: _options,
-      }
+      let info = { url: _url, options: _options }
       invoke(this.settings.onRequest, id, info)
 
-      let { url, options } = info
-      $requestQueue[requestId] = axios(url, options).then((res) => {
+      $requestQueue[requestId] = axios(info.url, info.options).then((res) => {
         $requestQueue[requestId] = null
 
         invoke(this.settings.onResponse, id, res)
@@ -361,13 +349,14 @@ export class DataBaxe {
 
         return res.data
       }).then((data) => {
-        return this.dispatch(id, data, params, options).then(() => data)
+        return this.dispatch(id, data, { url: _url, options: _options, originalOptions: options }).then(() => data)
       }).then((data) => {
         return transfer(data)
       }).catch((e) => {
         $requestQueue[requestId] = null
         throw e
       })
+
       return $requestQueue[requestId]
     }
 
@@ -412,10 +401,9 @@ export class DataBaxe {
    *
    * @param {*} id data source id
    * @param {*} data post data
-   * @param {*} params params to interpolate into url
    * @param {*} options axios configs
    */
-  async save(id, data, params, options) {
+  async save(id, data, options) {
     let dataSource = this.dataSources[id]
     if (!dataSource) {
       let aliasSource = this.aliasSources[id]
@@ -425,40 +413,36 @@ export class DataBaxe {
 
       // use alias to request
       let { callback, type } = aliasSource
-      if (type !== 'get') {
+      if (type !== 'save') {
         throw new Error('data source ' + id + ' is not type of `save`.')
       }
 
-      return await $async(callback)(data, params, options)
+      return await $async(callback)(data, options)
     }
 
-    data = data || {}
-    params = params || {}
-    options = options || {}
-
-    // option.data is disabled
-    if (options.data) {
-      delete options.data
-    }
-
-    let _url = interpolate(dataSource.url, params)
-    let _options = merge({ method: 'POST' }, dataSource.options, options)
+    let _options = merge({}, dataSource.options, options)
+    let _url = interpolate(dataSource.url, _options.symbols || {})
     let method = _options.method
 
-    // method should not be 'get' in `save`
-    if (!method || method.toLowerCase() === 'get') {
-      throw new Error(`'get' method is not allowed when save data to backend.`)
+    if (!method) {
+      method = 'POST'
+      _options.method = method
     }
 
-    // options.data is not allowed when 'delete'
-    if (['post', 'put', 'patch'].indexOf(method.toLowerCase()) === -1) {
+    // method should not be 'get' in `save`
+    if (['post', 'put', 'delete', 'patch'].indexOf(method.toLowerCase()) === -1) {
+      throw new Error('method:' + method + ' is not allowed when you save data.')
+    }
+
+    delete _options.symbols
+
+    // option.data is disabled
+    if (_options.data) {
       delete _options.data
     }
 
-    let requestId = getObjectHashcode({
-      url: _url,
-      options: _options,
-    })
+    // notice, this requestId ignore post data
+    const requestId = getObjectHashcode({ url: _url, options: _options, data: true })
 
     let tx = $transactions[requestId]
     let reset = () => {
@@ -483,87 +467,40 @@ export class DataBaxe {
     tx.timer = setTimeout(() => {
       tx.resolves.forEach(resolve => resolve())
       $transactions[requestId] = reset()
-    }, 10)
+    }, this.settings.debounce > 10 ? this.settings.debounce : 10)
 
     if (tx.processing) {
       return await tx.processing
     }
 
     const request = async () => {
-      await Promise.all(tx.promises)
-      return await axios(_url, merge({}, _options, { data: tx.data })).then((res) => {
+      await Promise.all(tx.promises) // the key word here !!!!!!!!!!
+
+      let options = merge({}, _options, { data: tx.data })
+      // options.data is not allowed when 'delete'
+      if (['post', 'put', 'patch'].indexOf(method.toLowerCase()) === -1) {
+        delete options.data
+      }
+
+      $requestQueue[requestId] = axios(_url, options).then((res) => {
+        $requestQueue[requestId] = null
+        $transactions[requestId] = null
+
         invoke(this.settings.onResponse, id, res)
         invoke(dataSource.take, res)
 
         return res.data
+      }).catch((e) => {
+        $requestQueue[requestId] = null
+        $transactions[requestId] = null
+        throw e
       })
+
+      return await $requestQueue[requestId]
     }
 
     tx.processing = request()
     return await tx.processing
-  }
-
-  /**
-   * design for restful api,
-   * a data source is made as get/post/delete by its options.method,
-   * so it can be request by only one method.
-   *
-   * @example
-   *
-   * let dataSources = [
-   *   {
-   *     id: 'users_list',
-   *     url: '/api/v2/users'
-   *   },
-   *   {
-   *     id: 'user_create',
-   *     url: '/api/v2/users',
-   *     options: { method: 'POST' }
-   *   },
-   * ]
-   *
-   * let users = await this.request('users_list') // get list
-   * this.request('user_create', newUserData) // create new
-   *
-   * @param {*} id
-   * @param {*} data
-   * @param {*} params
-   * @param {*} options
-   */
-  async request(id, data, params, options) {
-    let dataSource = this.dataSources[id]
-    if (!dataSource) {
-      let aliasSource = this.aliasSources[id]
-      if (!aliasSource) {
-        throw new Error('data source ' + id + ' is not exists.')
-      }
-
-      // use alias to request
-      let { callback, type } = aliasSource
-      if (type === 'save') {
-        return await $async(callback)(data, params, options)
-      }
-      else if (type === 'get') {
-        options = params
-        params = data
-        return await $async(callback)(params, options)
-      }
-      else {
-        throw new Error('data source ' + id + ' is not type of `get` or `save`.')
-      }
-    }
-
-    let method = dataSource.options ? dataSource.options.method || 'GET' : 'GET'
-    method = method.toUpperCase()
-
-    if (method === 'GET') {
-      options = params
-      params = data
-      return await this.get(id, params, options)
-    }
-    else {
-      return await this.save(id, data, params, options)
-    }
   }
 
   /**

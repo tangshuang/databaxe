@@ -1,7 +1,7 @@
 class ComponentB {
   constructor(container, DataSources) {
     this.container = container
-    this.dbx = new DataBaxe({ id: 'B', debug: true, expire: 1000 })
+    this.dbx = new DataBaxe({ id: 'B', debug: true, expire: 500, debounce: 500 })
     this.dbx.register(Object.assign({ id: 'studentsB' }, DataSources.STUDENTS))
     this.dbx.autorun(this.render.bind(this))
   }
