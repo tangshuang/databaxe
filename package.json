@@ -1,6 +1,6 @@
 {
   "name": "databaxe",
-  "version": "2.1.8",
+  "version": "2.1.9",
   "description": "A modern data request and store tool for frontend.",
   "main": "dist/databaxe.js",
   "scripts": {

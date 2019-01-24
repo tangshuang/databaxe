@@ -507,7 +507,6 @@ export class DataBaxe {
    * design for restful api,
    * a data source is made as get/post/delete by its options.method,
    * so it can be request by only one method.
-   * Notice, this method does not receive `options`.
    *
    * @example
    *
@@ -517,31 +516,21 @@ export class DataBaxe {
    *     url: '/api/v2/users'
    *   },
    *   {
-   *     id: 'user_by_id',
-   *     url: '/api/v2/users/{userId}'
-   *   },
-   *   {
    *     id: 'user_create',
    *     url: '/api/v2/users',
    *     options: { method: 'POST' }
    *   },
-   *   {
-   *     id: 'user_update',
-   *     url: '/api/v2/users/{userId}',
-   *     options: { method: 'PUT' }
-   *   }
    * ]
    *
    * let users = await this.request('users_list') // get list
-   * let user = await this.request('user_by_id', { userId: 'xxx' }) // get by id
-   * this.request('user_create', newUserData) // create
-   * this.request('user_update', newUserData, { userId: 'xxx' }) // update
+   * this.request('user_create', newUserData) // create new
    *
    * @param {*} id
    * @param {*} data
    * @param {*} params
+   * @param {*} options
    */
-  async request(id, data, params) {
+  async request(id, data, params, options) {
     let dataSource = this.dataSources[id]
     if (!dataSource) {
       let aliasSource = this.aliasSources[id]
@@ -552,13 +541,12 @@ export class DataBaxe {
       // use alias to request
       let { callback, type } = aliasSource
       if (type === 'save') {
-        return await $async(callback)(data, params)
+        return await $async(callback)(data, params, options)
       }
       else if (type === 'get') {
-        if (data) {
-          params = data
-        }
-        return await $async(callback)(params)
+        options = params
+        params = data
+        return await $async(callback)(params, options)
       }
       else {
         throw new Error('data source ' + id + ' is not type of `get` or `save`.')
@@ -569,13 +557,12 @@ export class DataBaxe {
     method = method.toUpperCase()
 
     if (method === 'GET') {
-      if (data) {
-        params = data
-      }
-      return await this.get(id, params)
+      options = params
+      params = data
+      return await this.get(id, params, options)
     }
     else {
-      return await this.save(id, data, params)
+      return await this.save(id, data, params, options)
     }
   }
 
