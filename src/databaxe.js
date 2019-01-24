@@ -76,7 +76,7 @@ export class DataBaxe {
     }
 
     await asyncM(dataSources, (dataSource) => {
-      let { id, url, options, transform, callback, type } = dataSource
+      let { id, url, options, take, transform, callback, type, expire } = dataSource
 
       // treat as an alias action
       if (!url && callback) {
@@ -86,7 +86,6 @@ export class DataBaxe {
       }
 
       let { baseURL } = this.settings
-      let expire = dataSource.expire || this.settings.expire
 
       url = url.indexOf('http://') === 0 || url.indexOf('https://') === 0 ? url : baseURL ? baseURL + url : url
       options = merge({}, this.settings.options, options)
@@ -98,7 +97,8 @@ export class DataBaxe {
         $dataSources[hash] = assign({}, source, { callbacks: [] })
       }
 
-      this.dataSources[id] = assign({}, source, { hash, transform, expire })
+      expire = expire || this.settings.expire
+      this.dataSources[id] = assign({}, source, { hash, take, transform, expire })
 
       invoke(this.settings.onRegister, id)
     })
@@ -357,6 +357,7 @@ export class DataBaxe {
         $requestQueue[requestId] = null
 
         invoke(this.settings.onResponse, id, res)
+        invoke(dataSource.take, res)
 
         return res.data
       }).then((data) => {
@@ -490,7 +491,12 @@ export class DataBaxe {
 
     const request = async () => {
       await Promise.all(tx.promises)
-      return await axios(_url, merge({}, _options, { data: tx.data }))
+      return await axios(_url, merge({}, _options, { data: tx.data })).then((res) => {
+        invoke(this.settings.onResponse, id, res)
+        invoke(dataSource.take, res)
+
+        return res.data
+      })
     }
 
     tx.processing = request()
