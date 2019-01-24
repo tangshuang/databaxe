@@ -136,7 +136,7 @@ export class DataBaxe {
     if (!isFunction(callback)) {
       throw new Error('data source ' + id + ' should have callback function.')
     }
-    this.aliasSources[id] = { callback: callback.bind(this), type }
+    this.aliasSources[id] = { callback, type }
   }
 
   /**
