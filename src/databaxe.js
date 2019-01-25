@@ -366,6 +366,8 @@ export class DataBaxe {
     }
 
     let cache = await this._getData(requestId)
+
+    // the first time to request data from backend
     if (!cache) {
       let result = await request()
       return result
@@ -374,8 +376,14 @@ export class DataBaxe {
     // if expire is not set, it means user want to use current cached data any way
     // when data cache is not expired, use it
     if (dataSource.expire && cache.time + dataSource.expire < Date.now()) {
-      let result = await request()
-      return result
+      try {
+        let result = await request()
+        return result
+      }
+      // if request fail, latest cache will be used
+      catch(e) {
+        this.debug(e)
+      }
     }
 
     let result = await transfer(cache.data)
