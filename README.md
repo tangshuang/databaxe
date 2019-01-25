@@ -85,8 +85,7 @@ It will be merged with `DataBaxe.defaultSettings`.
 
 - debug: false,
 - expire: 0, // 0: use cache any way, -1: never use cache, +Num: time to cache. default is 0
-- baseURL: '', // backend url base
-- database: {}, // storage options for hello-storage
+- store: {}, // storage options for hello-storage
 - options: {}, // default options for axios
 - onInit: null, // function
 - onRegister: null, // function, when a data source is registered into dbx
@@ -135,7 +134,7 @@ Datasource id.
 
 **callback(data, params, options)**
 
-Callback function when request successfully from backend data api, and new data is put into database.
+Callback function when request successfully from backend data api, and new data is put into store.
 
 - data: new data from api
 - params: interpolations for url
@@ -178,24 +177,24 @@ You must to do this before you destroy your component, or you will face memory p
 
 _DO NOT USE THIS METHOD IF YOU DO NOT SURE WHAT IT WILL DO._
 
-Save data to database to replace old data.
+Save data to store to replace old data.
 Call all callback functions which are appended to this data source's callback list.
 You SHOULD notice that, not only this DataBaxe intance's callbacks, but also all callbacks of others will be triggered.
 
 ### get(id, params, options, force)
 
-Get data from database and return a Promise instance. If data is not exists, it will request data from server side.
+Get data from store and return a Promise instance. If data is not exists, it will request data from server side.
 Don't be worry about several calls. If in a page has several components request a url at the same time, only one request will be sent, and all of them will get the same Promise instance and will be notified by subscribed callback functions.
 
 When the data is back from server side, all component will be notified.
 
-If `expires` is set, data in database will be used if not expired, if the data is expired, it will request again which cost time (which will trigger callback).
+If `expires` is set, data in store will be used if not expired, if the data is expired, it will request again which cost time (which will trigger callback).
 
-If not set, data in local database will always be used if exist, so it is recommended to set a `expires` time.
+If not set, data in local store will always be used if exist, so it is recommended to set a `expires` time.
 
-If there is data in database, and expired, and request fail, local database data will be used again. A warn message will be throw out in console if `debug` is true.
+If there is data in store, and expired, and request fail, local store data will be used again. A warn message will be throw out in console if `debug` is true.
 
-*Notice: you do not get the latest data request from server side, you just get latest data from local database.*
+*Notice: you do not get the latest data request from server side, you just get latest data from local store.*
 
 **params**
 
@@ -247,7 +246,7 @@ dbx.save('myid', {}, myData).then(async () => {
 })
 ```
 
-Notice: when you forcely request, subscribers will be fired after data come back, and local database will be update too. So it is a good way to use force request when you want to refresh local cached data.
+Notice: when you forcely request, subscribers will be fired after data come back, and local store will be update too. So it is a good way to use force request when you want to refresh local cached data.
 
 ### save(id, data, params, options)
 
@@ -257,7 +256,7 @@ To save data to server side, I provide a save method. You can use it like put/po
 dbx.save('myId', { userId: '1233' }, { name: 'lily', age: 10 })
 ```
 
-Notice: save method will not update the local database data. If you want to update data in database, use `get` with `force=true`.
+Notice: save method will not update the local store data. If you want to update data in store, use `get` with `force=true`.
 
 **id**
 

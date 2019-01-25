@@ -14,7 +14,7 @@ export class DataBaxe {
     debug: false,
     expire: 0, // cache expire time for `get` method
     debounce: 0, // debounce time for `save` mehtod
-    database: { // storage options for hello-storage
+    store: { // storage options for hello-storage
       namespace: 'databaxe',
       storage: null,
       stringify: false,
@@ -25,7 +25,7 @@ export class DataBaxe {
 
     onInit: null, // after init
     onRegister: null, // after data source registered
-    onUpdate: null, // after saving to database
+    onUpdate: null, // after saving to store
     onRequest: null, // before ajax send
     onResponse: null, // after ajax back
   }
@@ -33,7 +33,7 @@ export class DataBaxe {
   constructor(settings) {
     this.id = (settings.id || 'databaxe.' + Date.now())  + '.' + parseInt(Math.random() * 10000, 10)
     this.settings = assign({}, DataBaxe.defaultSettings, settings)
-    this.storage = new HelloStorage(Object.assign({}, this.settings.database, { async: true }))
+    this.storage = new HelloStorage(Object.assign({}, this.settings.store, { async: true }))
 
     this.dataSources = {}
     this.aliasSources = {}
@@ -484,13 +484,16 @@ export class DataBaxe {
     const request = async () => {
       await Promise.all(tx.promises) // the key word here !!!!!!!!!!
 
-      let options = merge({}, _options, { data: tx.data })
+      let __options = merge({}, _options, { data: tx.data })
       // options.data is not allowed when 'delete'
       if (['post', 'put', 'patch'].indexOf(method.toLowerCase()) === -1) {
-        delete options.data
+        delete __options.data
       }
 
-      $requestQueue[requestId] = axios(_url, options).then((res) => {
+      let info = { url: _url, options: __options }
+      invoke(this.settings.onRequest, id, info)
+
+      $requestQueue[requestId] = axios(info.url, info.options).then((res) => {
         $requestQueue[requestId] = null
         $transactions[requestId] = null
 
