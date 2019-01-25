@@ -13,7 +13,7 @@ export class DataBaxe {
   static defaultSettings = {
     debug: false,
     expire: 0, // cache expire time for `get` method
-    debounce: 0, // debounce time for `save` mehtod
+    debounce: 10, // debounce time for `save` mehtod
     store: { // storage options for hello-storage
       namespace: 'databaxe',
       storage: null,
@@ -82,11 +82,11 @@ export class DataBaxe {
     }
 
     await asyncM(dataSources, (dataSource) => {
-      let { id, url, options, take, transform, callback, type, expire } = dataSource
+      let { id, url, options, take, transform, fn, type, expire, debounce } = dataSource
 
       // treat as an alias action
-      if (!url && callback) {
-        this.alias(id, callback, type)
+      if (!url && fn) {
+        this.alias(id, fn, type)
         invoke(this.settings.onRegister, id)
         return
       }
@@ -101,7 +101,8 @@ export class DataBaxe {
       }
 
       expire = expire || this.settings.expire
-      this.dataSources[id] = assign({}, source, { hash, take, transform, expire })
+      debounce = debounce || this.settings.debounce
+      this.dataSources[id] = assign({}, source, { hash, take, transform, expire, debounce })
 
       invoke(this.settings.onRegister, id)
     })
@@ -116,7 +117,7 @@ export class DataBaxe {
    *
    * this.alias('key', function() {
    *   let [data1, data2] = Promise.all([
-   *     this.get('key1'), // use `this` in callback function
+   *     this.get('key1'), // use `this` in fn function
    *     this.get('key2'),
    *   ])
    *   return {
@@ -125,21 +126,24 @@ export class DataBaxe {
    *   }
    * })
    *
-   * let info = await this.get('key') // use the id key to get callback output
+   * let info = await this.get('key') // use the id key to get fn output
    *
    * @param {*} id
-   * @param {*} callback a function to return data
+   * @param {*} fn a function to return data
    * @param {'get'|'save'} type which method to use to request
    */
-  async alias(id, callback, type = 'get') {
+  async alias(id, fn, type = 'get') {
     let dataSource = this.dataSources[id]
     if (dataSource) {
       throw new Error('data source ' + id + ' is existing.')
     }
-    if (!isFunction(callback)) {
-      throw new Error('data alias ' + id + ' should have callback function.')
+    if (!isFunction(fn)) {
+      throw new Error('data alias ' + id + ' should have fn function.')
     }
-    this.aliasSources[id] = { callback, type }
+    if (['get', 'save'].indexOf(type) === -1) {
+      throw new Error('data alias ' + id + ' should have type with get|save')
+    }
+    this.aliasSources[id] = { fn, type }
   }
 
   /**
@@ -290,25 +294,25 @@ export class DataBaxe {
       }
 
       // use alias to request
-      let { callback, type } = aliasSource
+      let { fn, type } = aliasSource
       if (type !== 'get') {
         throw new Error('data alias ' + id + ' is not type of `get`.')
       }
 
-      let result = await $async(callback)(options, force)
+      let result = await $async(fn)(options, force)
       return result
     }
 
 
     const _options = merge({}, dataSource.options, options)
-    const _url = interpolate(dataSource.url, _options.symbols || {})
+    const _url = interpolate(dataSource.url, _options.fillers || {})
     const method = _options.method
 
     if (method && ['get', 'post', 'headers', 'options'].indexOf(method.toLowerCase()) === -1) {
       throw new Error('method:' + method + ' is not allowed when you get data.')
     }
 
-    delete _options.symbols
+    delete _options.fillers
     // delete options.data when use 'get' method
     if (!method || method.toLowerCase() !== 'post') {
       delete _options.data
@@ -420,16 +424,16 @@ export class DataBaxe {
       }
 
       // use alias to request
-      let { callback, type } = aliasSource
+      let { fn, type } = aliasSource
       if (type !== 'save') {
         throw new Error('data source ' + id + ' is not type of `save`.')
       }
 
-      return await $async(callback)(data, options)
+      return await $async(fn)(data, options)
     }
 
     let _options = merge({}, dataSource.options, options)
-    let _url = interpolate(dataSource.url, _options.symbols || {})
+    let _url = interpolate(dataSource.url, _options.fillers || {})
     let method = _options.method
 
     if (!method) {
@@ -442,7 +446,7 @@ export class DataBaxe {
       throw new Error('method:' + method + ' is not allowed when you save data.')
     }
 
-    delete _options.symbols
+    delete _options.fillers
 
     // option.data is disabled
     if (_options.data) {
@@ -475,7 +479,7 @@ export class DataBaxe {
     tx.timer = setTimeout(() => {
       tx.resolves.forEach(resolve => resolve())
       $transactions[requestId] = reset()
-    }, this.settings.debounce > 10 ? this.settings.debounce : 10)
+    }, dataSource.debounce > 10 ? dataSource.debounce : 10)
 
     if (tx.processing) {
       return await tx.processing
