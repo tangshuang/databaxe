@@ -81,7 +81,7 @@ export class DataBaxe {
       dataSources = [dataSources]
     }
 
-    await asyncM(dataSources, (dataSource) => {
+    dataSources.forEach((dataSource) => {
       let { id, url, options, take, transform, fn, type, expire, debounce } = dataSource
 
       // treat as an alias action
